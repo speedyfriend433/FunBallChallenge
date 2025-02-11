@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Plinko Game with Score Boost Pads</title>
+  <title>Advanced Plinko Game</title>
   <style>
     body {
       text-align: center;
       margin: 0;
       padding: 0;
       background: #f0f0f0;
+      font-family: Arial, sans-serif;
     }
     h1 {
-      font-family: Arial, sans-serif;
       margin-top: 20px;
       color: #333;
     }
@@ -25,171 +25,204 @@
       font-size: 16px;
       padding: 10px 20px;
       cursor: pointer;
+      margin-bottom: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>Plinko Game with Score Boost Pads (For Fun!)</h1>
-  <canvas id="plinkoCanvas" width="500" height="700"></canvas>
+  <h1>Advanced Plinko (For Fun!)</h1>
+  <canvas id="plinkoCanvas" width="500" height="750"></canvas>
   <button id="dropBall">Drop Ball</button>
-
+  
   <script>
-    // Get the canvas and its drawing context
+    // Get canvas and context
     const canvas = document.getElementById('plinkoCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Constants for the score pads area at the bottom
+    // ---------------- Configuration & Constants ----------------
+
+    // Physics constants
+    const gravity = 0.1;         // Lower gravity for a slower fall
+    const restitution = 0.9;     // Energy loss on collision (0.9 means 90% energy is preserved)
+
+    // Ball settings
+    const ballRadius = 10;
+
+    // Score pad settings (16 pads total)
     const padHeight = 50;
     const padY = canvas.height - padHeight;
-    const padWidth = canvas.width / 16; // 16 pads across the bottom
-
-    // Define the score multipliers for the pads
+    const padCount = 16;
+    const padWidth = canvas.width / padCount;
+    
+    // Multipliers on pads:
     const leftMultipliers = ["100x", "25x", "10x", "5x", "2.5x", "1.5x", "0.5x", "0.2x"];
-    const rightMultipliers = leftMultipliers.slice().reverse();
+    // For right half, use the reverse order:
+    const rightMultipliers = [...leftMultipliers].reverse();
     const scoreMultipliers = leftMultipliers.concat(rightMultipliers);
 
-    // Ball object with starting properties
-    let ball = { 
-      x: canvas.width / 2, 
-      y: 30,        // starts at the triangle apex (top)
-      r: 10, 
-      vx: 0, 
-      vy: 0 
-    };
-
-    // Use a lower gravity for a slower falling ball
-    const gravity = 0.15;
-    let simulationRun = false;
-
-    // Create peg array – arranged in 8 rows with closer spacing
-    const pegs = [];
+    // Peg settings for a triangular (pyramid) arrangement:
+    const numPegRows = 7;
     const pegRadius = 5;
-    const numRows = 8;
-    const yStart = 120;  // starting y-coordinate for the first peg row
-    const ySpacing = 50; // reduced vertical spacing between peg rows
-    const xSpacing = 30; // reduced horizontal spacing between pegs
+    const pegHSpacing = 40;  // horizontal spacing between pegs in a row
+    const pegVSpacing = 50;  // vertical distance between rows
+    const yStart = 120;      // starting y position for the top peg row
 
-    for (let row = 0; row < numRows; row++) {
-      // For a staggered look, alternate the starting x-position across rows.
-      let startX = (row % 2 === 0) ? (xSpacing / 2) : xSpacing;
-      for (let x = startX; x < canvas.width; x += xSpacing) {
-        pegs.push({ x: x, y: yStart + row * ySpacing, r: pegRadius });
+    // Array to hold peg objects (each with x, y, and r)
+    const pegs = [];
+    // Arrange pegs in a triangle:
+    for (let row = 0; row < numPegRows; row++) {
+      const numPegs = row + 1;  // row 0 has 1 peg, row 1 has 2 pegs, etc.
+      // Center the row horizontally:
+      const startX = canvas.width / 2 - ((numPegs - 1) * pegHSpacing) / 2;
+      const yPos = yStart + row * pegVSpacing;
+      for (let j = 0; j < numPegs; j++) {
+        pegs.push({ x: startX + j * pegHSpacing, y: yPos, r: pegRadius });
       }
     }
 
-    // Function to draw the board – triangle obstacle, pegs, ball, and score boost pads
-    function draw() {
-      // Clear the canvas
+    // Array to hold falling (and landed) ball objects.
+    // Each ball has properties: x, y, vx, vy, r, landed (flag), multiplier (if landed)
+    const balls = [];
+
+    // ------------------ Physics & Animation ------------------
+
+    // Update function: updates the position and velocity of each non-landed ball.
+    function update() {
+      balls.forEach(ball => {
+        if (!ball.landed) {
+          // Apply gravity
+          ball.vy += gravity;
+          // Update position
+          ball.x += ball.vx;
+          ball.y += ball.vy;
+          
+          // Bounce off the side walls
+          if (ball.x < ball.r) {
+            ball.x = ball.r;
+            ball.vx = -ball.vx * restitution;
+          }
+          if (ball.x > canvas.width - ball.r) {
+            ball.x = canvas.width - ball.r;
+            ball.vx = -ball.vx * restitution;
+          }
+          
+          // Check collision with each peg
+          for (let peg of pegs) {
+            const dx = ball.x - peg.x;
+            const dy = ball.y - peg.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < ball.r + peg.r) {
+              // Calculate the collision normal (unit vector from peg to ball)
+              const nx = dx / dist;
+              const ny = dy / dist;
+              // Determine the component of velocity along the normal.
+              const dot = ball.vx * nx + ball.vy * ny;
+              // Reflect the velocity vector: v' = v - 2*(v·n)*n
+              ball.vx = (ball.vx - 2 * dot * nx) * restitution;
+              ball.vy = (ball.vy - 2 * dot * ny) * restitution;
+              // Reposition the ball so it is no longer overlapping the peg.
+              const overlap = ball.r + peg.r - dist;
+              ball.x += nx * overlap;
+              ball.y += ny * overlap;
+              // Process only one peg collision per frame for this ball.
+              break;
+            }
+          }
+          
+          // Check if the ball has reached (landed on) the score pad area.
+          if (ball.y + ball.r >= padY) {
+            ball.y = padY - ball.r;
+            ball.landed = true;
+            // Determine which pad based on the ball's x-coordinate.
+            let padIndex = Math.floor(ball.x / padWidth);
+            ball.multiplier = scoreMultipliers[padIndex] || "N/A";
+          }
+        }
+      });
+    }
+
+    // Draw the static board elements (triangle obstacle, pegs, score pads)
+    function drawBoard() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw the triangle obstacle at the top
+      // Draw the triangle obstacle at the top.
       ctx.fillStyle = "#888";
       ctx.beginPath();
-      ctx.moveTo(canvas.width / 2, 30);           // Apex (where the ball starts)
-      ctx.lineTo(canvas.width / 2 - 40, 80);        // Left corner of base
-      ctx.lineTo(canvas.width / 2 + 40, 80);        // Right corner of base
+      ctx.moveTo(canvas.width / 2, 30);         // Apex (starting point of balls)
+      ctx.lineTo(canvas.width / 2 - 40, 80);      // Left base corner
+      ctx.lineTo(canvas.width / 2 + 40, 80);      // Right base corner
       ctx.closePath();
       ctx.fill();
-
-      // Draw each peg
+      
+      // Draw each peg.
       ctx.fillStyle = "#FF5722";
-      pegs.forEach(function(peg) {
+      pegs.forEach(peg => {
         ctx.beginPath();
         ctx.arc(peg.x, peg.y, peg.r, 0, Math.PI * 2);
         ctx.fill();
       });
-
-      // Draw the ball
-      ctx.fillStyle = "#2196F3";
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Draw the score boost pads at the bottom
-      scoreMultipliers.forEach(function(mult, i) {
+      
+      // Draw score boost pads at the bottom.
+      for (let i = 0; i < padCount; i++) {
         const xPos = i * padWidth;
         ctx.fillStyle = "#E0E0E0";
         ctx.fillRect(xPos, padY, padWidth, padHeight);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(xPos, padY, padWidth, padHeight);
-
-        // Draw the multiplier text centered in the pad
+        // Draw the multiplier text centered in the pad.
         ctx.fillStyle = "#000";
         ctx.font = "bold 12px Arial";
-        let textWidth = ctx.measureText(mult).width;
-        let textX = xPos + (padWidth - textWidth) / 2;
-        let textY = padY + padHeight / 2 + 4;
-        ctx.fillText(mult, textX, textY);
+        const text = scoreMultipliers[i];
+        const textWidth = ctx.measureText(text).width;
+        const textX = xPos + (padWidth - textWidth) / 2;
+        const textY = padY + padHeight / 2 + 4;
+        ctx.fillText(text, textX, textY);
+      }
+    }
+
+    // Draw all balls (both falling and landed).
+    function drawBalls() {
+      balls.forEach(ball => {
+        ctx.fillStyle = "#2196F3";
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+        ctx.fill();
+        // If the ball has landed, display its multiplier above it.
+        if (ball.landed && ball.multiplier) {
+          ctx.fillStyle = "#000";
+          ctx.font = "bold 14px Arial";
+          const txtWidth = ctx.measureText(ball.multiplier).width;
+          ctx.fillText(ball.multiplier, ball.x - txtWidth / 2, ball.y - ball.r - 10);
+        }
       });
     }
 
-    // Update simulation – apply physics, check peg collisions, and detect landing on a boost pad
-    function update() {
-      if (!simulationRun) return;
-
-      // Apply gravity and update ball position
-      ball.vy += gravity;
-      ball.y += ball.vy;
-      ball.x += ball.vx;
-
-      // Check collision with each peg
-      for (let i = 0; i < pegs.length; i++) {
-        let peg = pegs[i];
-        let dx = ball.x - peg.x;
-        let dy = ball.y - peg.y;
-        let dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < ball.r + peg.r) {
-          // Upon collision, give the ball a slight random horizontal push
-          ball.vx = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * 2 + 1);
-          // Slight reduction of vertical speed to simulate energy loss
-          ball.vy = Math.abs(ball.vy) * 0.9;
-          // Reposition the ball just outside the peg collision area
-          ball.y = peg.y + ball.r + peg.r;
-          break;  // process one collision per frame for simplicity
-        }
-      }
-
-      // Bounce off the side walls
-      if (ball.x < ball.r) {
-        ball.x = ball.r;
-        ball.vx *= -1;
-      } else if (ball.x > canvas.width - ball.r) {
-        ball.x = canvas.width - ball.r;
-        ball.vx *= -1;
-      }
-
-      // Check if the ball has reached the score pad area.
-      // We stop the simulation and display the pad multiplier where it lands.
-      if (ball.y > padY - ball.r) {
-        ball.y = padY - ball.r;
-        simulationRun = false;
-        const padIndex = Math.floor(ball.x / padWidth);
-        const landedMultiplier = scoreMultipliers[padIndex] || "N/A";
-        // Using a slight timeout to ensure the drawing has updated before alerting.
-        setTimeout(function() {
-          alert("You landed on: " + landedMultiplier);
-        }, 100);
-      }
-
-      draw();
-      if (simulationRun) {
-        requestAnimationFrame(update);
-      }
-    }
-
-    // Start a new drop when the button is clicked
-    document.getElementById('dropBall').addEventListener('click', function () {
-      // Reset ball position and velocity for each drop
-      ball.x = canvas.width / 2;
-      ball.y = 30;
-      ball.vx = 0;
-      ball.vy = 0;
-      simulationRun = true;
+    // Main animation loop: update physics and redraw board and balls.
+    function animate() {
       update();
-    });
+      drawBoard();
+      drawBalls();
+      requestAnimationFrame(animate);
+    }
+    
+    // Start the continuous animation.
+    requestAnimationFrame(animate);
 
-    // Initial draw of the board
-    draw();
+    // ------------------ Interaction ------------------
+
+    // On button click, add a new ball starting at the triangle apex.
+    document.getElementById('dropBall').addEventListener('click', function() {
+      const newBall = {
+        x: canvas.width / 2,  // Start at the center (apex of the triangle)
+        y: 30,
+        vx: 0,
+        vy: 0,
+        r: ballRadius,
+        landed: false,
+        multiplier: null
+      };
+      balls.push(newBall);
+    });
   </script>
 </body>
 </html>
