@@ -2,18 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Advanced Plinko Game</title>
+  <title>Advanced Plinko with Money Mechanics</title>
   <style>
     body {
-      text-align: center;
-      margin: 0;
-      padding: 0;
       background: #f0f0f0;
       font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      text-align: center;
     }
     h1 {
       margin-top: 20px;
       color: #333;
+    }
+    #controls {
+      margin: 10px auto;
+    }
+    #controls span,
+    #controls label {
+      font-size: 16px;
+      margin: 0 5px;
+    }
+    #priceInput {
+      width: 80px;
+      font-size: 16px;
+      padding: 2px;
     }
     canvas {
       background: #fff;
@@ -31,48 +44,54 @@
 </head>
 <body>
   <h1>Advanced Plinko (For Fun!)</h1>
+  <div id="controls">
+    <span>Current Money: $<span id="moneyDisplay">10000.00</span></span>
+    &nbsp;&nbsp;&nbsp;
+    <label for="priceInput">Drop Price: $</label>
+    <input type="number" id="priceInput" value="100" min="1">
+  </div>
   <canvas id="plinkoCanvas" width="500" height="750"></canvas>
   <button id="dropBall">Drop Ball</button>
-  
+
   <script>
     // Get canvas and context
     const canvas = document.getElementById('plinkoCanvas');
     const ctx = canvas.getContext('2d');
 
-    // ---------------- Configuration & Constants ----------------
+    // ----------------- Global Money & Drop Price -----------------
+    let currentMoney = 10000;
+    function updateMoneyDisplay() {
+      document.getElementById('moneyDisplay').innerText = currentMoney.toFixed(2);
+    }
 
-    // Physics constants
-    const gravity = 0.1;         // Lower gravity for a slower fall
-    const restitution = 0.9;     // Energy loss on collision (0.9 means 90% energy is preserved)
-
-    // Ball settings
+    // ------------------ Physics & Game Settings ------------------
+    const gravity = 0.1;         // Lower gravity makes the ball fall slowly.
+    const restitution = 0.9;     // Bounce energy retention.
     const ballRadius = 10;
 
-    // Score pad settings (16 pads total)
+    // Score pad settings
     const padHeight = 50;
     const padY = canvas.height - padHeight;
     const padCount = 16;
     const padWidth = canvas.width / padCount;
-    
-    // Multipliers on pads:
+
+    // Score multipliers (left half and reversed right half)
     const leftMultipliers = ["100x", "25x", "10x", "5x", "2.5x", "1.5x", "0.5x", "0.2x"];
-    // For right half, use the reverse order:
     const rightMultipliers = [...leftMultipliers].reverse();
     const scoreMultipliers = leftMultipliers.concat(rightMultipliers);
 
     // Peg settings for a triangular (pyramid) arrangement:
     const numPegRows = 7;
     const pegRadius = 5;
-    const pegHSpacing = 40;  // horizontal spacing between pegs in a row
-    const pegVSpacing = 50;  // vertical distance between rows
+    const pegHSpacing = 40;  // horizontal spacing between pegs
+    const pegVSpacing = 50;  // vertical distance between peg rows
     const yStart = 120;      // starting y position for the top peg row
 
-    // Array to hold peg objects (each with x, y, and r)
+    // Create pegs in a triangular arrangement.
     const pegs = [];
-    // Arrange pegs in a triangle:
     for (let row = 0; row < numPegRows; row++) {
-      const numPegs = row + 1;  // row 0 has 1 peg, row 1 has 2 pegs, etc.
-      // Center the row horizontally:
+      const numPegs = row + 1;
+      // Center the row horizontally.
       const startX = canvas.width / 2 - ((numPegs - 1) * pegHSpacing) / 2;
       const yPos = yStart + row * pegVSpacing;
       for (let j = 0; j < numPegs; j++) {
@@ -80,23 +99,21 @@
       }
     }
 
-    // Array to hold falling (and landed) ball objects.
-    // Each ball has properties: x, y, vx, vy, r, landed (flag), multiplier (if landed)
+    // Array to hold all ball objects.
+    // Each ball: x, y, vx, vy, r, landed (flag), multiplier (string), cost (drop price), collected (flag)
     const balls = [];
 
-    // ------------------ Physics & Animation ------------------
-
-    // Update function: updates the position and velocity of each non-landed ball.
+    // ---------------------- Animation & Physics ----------------------
     function update() {
       balls.forEach(ball => {
         if (!ball.landed) {
-          // Apply gravity
+          // Apply gravity.
           ball.vy += gravity;
-          // Update position
+          // Update ball position.
           ball.x += ball.vx;
           ball.y += ball.vy;
-          
-          // Bounce off the side walls
+
+          // Bounce off side walls.
           if (ball.x < ball.r) {
             ball.x = ball.r;
             ball.vx = -ball.vx * restitution;
@@ -105,55 +122,61 @@
             ball.x = canvas.width - ball.r;
             ball.vx = -ball.vx * restitution;
           }
-          
-          // Check collision with each peg
+
+          // Check collision with each peg.
           for (let peg of pegs) {
             const dx = ball.x - peg.x;
             const dy = ball.y - peg.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < ball.r + peg.r) {
-              // Calculate the collision normal (unit vector from peg to ball)
+              // Calculate collision normal.
               const nx = dx / dist;
               const ny = dy / dist;
-              // Determine the component of velocity along the normal.
+              // Reflect velocity.
               const dot = ball.vx * nx + ball.vy * ny;
-              // Reflect the velocity vector: v' = v - 2*(v·n)*n
               ball.vx = (ball.vx - 2 * dot * nx) * restitution;
               ball.vy = (ball.vy - 2 * dot * ny) * restitution;
-              // Reposition the ball so it is no longer overlapping the peg.
+              // Push the ball out of the peg.
               const overlap = ball.r + peg.r - dist;
               ball.x += nx * overlap;
               ball.y += ny * overlap;
-              // Process only one peg collision per frame for this ball.
-              break;
+              break;  // Process one collision per frame.
             }
           }
-          
-          // Check if the ball has reached (landed on) the score pad area.
+
+          // When the ball reaches the score pad area.
           if (ball.y + ball.r >= padY) {
             ball.y = padY - ball.r;
             ball.landed = true;
-            // Determine which pad based on the ball's x-coordinate.
-            let padIndex = Math.floor(ball.x / padWidth);
+            // Determine pad index based on x-coordinate.
+            const padIndex = Math.floor(ball.x / padWidth);
             ball.multiplier = scoreMultipliers[padIndex] || "N/A";
+            // If winnings haven't been added yet, process them.
+            if (!ball.collected && ball.multiplier !== "N/A") {
+              const mVal = parseFloat(ball.multiplier.replace('x', ''));
+              const winnings = ball.cost * mVal;
+              currentMoney += winnings;
+              ball.collected = true;
+              updateMoneyDisplay();
+            }
           }
         }
       });
     }
 
-    // Draw the static board elements (triangle obstacle, pegs, score pads)
     function drawBoard() {
+      // Clear the entire canvas.
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Draw the triangle obstacle at the top.
       ctx.fillStyle = "#888";
       ctx.beginPath();
-      ctx.moveTo(canvas.width / 2, 30);         // Apex (starting point of balls)
+      ctx.moveTo(canvas.width / 2, 30);         // Apex (ball starting point)
       ctx.lineTo(canvas.width / 2 - 40, 80);      // Left base corner
       ctx.lineTo(canvas.width / 2 + 40, 80);      // Right base corner
       ctx.closePath();
       ctx.fill();
-      
+
       // Draw each peg.
       ctx.fillStyle = "#FF5722";
       pegs.forEach(peg => {
@@ -161,7 +184,7 @@
         ctx.arc(peg.x, peg.y, peg.r, 0, Math.PI * 2);
         ctx.fill();
       });
-      
+
       // Draw score boost pads at the bottom.
       for (let i = 0; i < padCount; i++) {
         const xPos = i * padWidth;
@@ -169,7 +192,7 @@
         ctx.fillRect(xPos, padY, padWidth, padHeight);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(xPos, padY, padWidth, padHeight);
-        // Draw the multiplier text centered in the pad.
+        // Draw multiplier text centered on each pad.
         ctx.fillStyle = "#000";
         ctx.font = "bold 12px Arial";
         const text = scoreMultipliers[i];
@@ -180,14 +203,13 @@
       }
     }
 
-    // Draw all balls (both falling and landed).
     function drawBalls() {
       balls.forEach(ball => {
         ctx.fillStyle = "#2196F3";
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
         ctx.fill();
-        // If the ball has landed, display its multiplier above it.
+        // If landed, optionally display the multiplier above the ball.
         if (ball.landed && ball.multiplier) {
           ctx.fillStyle = "#000";
           ctx.font = "bold 14px Arial";
@@ -197,29 +219,41 @@
       });
     }
 
-    // Main animation loop: update physics and redraw board and balls.
+    // Main animation loop.
     function animate() {
       update();
       drawBoard();
       drawBalls();
       requestAnimationFrame(animate);
     }
-    
-    // Start the continuous animation.
     requestAnimationFrame(animate);
 
-    // ------------------ Interaction ------------------
-
-    // On button click, add a new ball starting at the triangle apex.
+    // --------------------- User Interaction ---------------------
     document.getElementById('dropBall').addEventListener('click', function() {
+      const priceInput = document.getElementById('priceInput');
+      const dropPrice = parseFloat(priceInput.value);
+      if (isNaN(dropPrice) || dropPrice <= 0) {
+        alert("Invalid drop price.");
+        return;
+      }
+      if (currentMoney < dropPrice) {
+        alert("Not enough money to drop this ball!");
+        return;
+      }
+      // Deduct the drop price immediately.
+      currentMoney -= dropPrice;
+      updateMoneyDisplay();
+      // Create a new ball starting at the triangle's apex.
       const newBall = {
-        x: canvas.width / 2,  // Start at the center (apex of the triangle)
+        x: canvas.width / 2,
         y: 30,
         vx: 0,
         vy: 0,
         r: ballRadius,
         landed: false,
-        multiplier: null
+        multiplier: null,
+        cost: dropPrice,    // Save this drop's price for when it lands.
+        collected: false    // Flag to ensure winnings are added only once.
       };
       balls.push(newBall);
     });
