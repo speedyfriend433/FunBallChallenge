@@ -40,6 +40,13 @@
       cursor: pointer;
       margin-bottom: 20px;
     }
+    #gameOverMessage {
+      display: none;
+      font-size: 24px;
+      color: red;
+      margin-top: 10px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -52,21 +59,30 @@
   </div>
   <canvas id="plinkoCanvas" width="500" height="750"></canvas>
   <button id="dropBall">Drop Ball</button>
+  <div id="gameOverMessage">Game Over!</div>
 
   <script>
     // Get canvas and context
     const canvas = document.getElementById('plinkoCanvas');
     const ctx = canvas.getContext('2d');
 
-    // ----------------- Global Money & Drop Price -----------------
+    // ----------------- Global Money, Game Over & Drop Price -----------------
     let currentMoney = 10000;
+    let gameOver = false;
+    
     function updateMoneyDisplay() {
       document.getElementById('moneyDisplay').innerText = currentMoney.toFixed(2);
     }
 
+    function triggerGameOver() {
+      gameOver = true;
+      document.getElementById('dropBall').disabled = true;
+      document.getElementById('gameOverMessage').style.display = 'block';
+    }
+
     // ------------------ Physics & Game Settings ------------------
-    const gravity = 0.1;         // Lower gravity makes the ball fall slowly.
-    const restitution = 0.9;     // Bounce energy retention.
+    const gravity = 0.1;         // Lower gravity for a slower ball descent.
+    const restitution = 0.9;     // Retained energy on bounce.
     const ballRadius = 10;
 
     // Score pad settings
@@ -85,7 +101,7 @@
     const pegRadius = 5;
     const pegHSpacing = 40;  // horizontal spacing between pegs
     const pegVSpacing = 50;  // vertical distance between peg rows
-    const yStart = 120;      // starting y position for the top peg row
+    const yStart = 120;      // starting y for the top peg row
 
     // Create pegs in a triangular arrangement.
     const pegs = [];
@@ -113,7 +129,7 @@
           ball.x += ball.vx;
           ball.y += ball.vy;
 
-          // Bounce off side walls.
+          // Bounce off the side walls.
           if (ball.x < ball.r) {
             ball.x = ball.r;
             ball.vx = -ball.vx * restitution;
@@ -132,8 +148,8 @@
               // Calculate collision normal.
               const nx = dx / dist;
               const ny = dy / dist;
-              // Reflect velocity.
               const dot = ball.vx * nx + ball.vy * ny;
+              // Reflect velocity using the normal.
               ball.vx = (ball.vx - 2 * dot * nx) * restitution;
               ball.vy = (ball.vy - 2 * dot * ny) * restitution;
               // Push the ball out of the peg.
@@ -151,7 +167,7 @@
             // Determine pad index based on x-coordinate.
             const padIndex = Math.floor(ball.x / padWidth);
             ball.multiplier = scoreMultipliers[padIndex] || "N/A";
-            // Add winnings if they haven't been added yet.
+            // Add winnings if not already added.
             if (!ball.collected && ball.multiplier !== "N/A") {
               const mVal = parseFloat(ball.multiplier.replace('x', ''));
               const winnings = ball.cost * mVal;
@@ -165,19 +181,19 @@
     }
 
     function drawBoard() {
-      // Clear the entire canvas.
+      // Clear the canvas.
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw the triangle obstacle at the top.
+      // Draw the triangle spawner obstacle at the top.
       ctx.fillStyle = "#888";
       ctx.beginPath();
-      ctx.moveTo(canvas.width / 2, 30);         // Apex (ball starting point)
-      ctx.lineTo(canvas.width / 2 - 40, 80);      // Left base corner
-      ctx.lineTo(canvas.width / 2 + 40, 80);      // Right base corner
+      ctx.moveTo(canvas.width / 2, 30);
+      ctx.lineTo(canvas.width / 2 - 40, 80);
+      ctx.lineTo(canvas.width / 2 + 40, 80);
       ctx.closePath();
       ctx.fill();
 
-      // Draw each peg.
+      // Draw pegs.
       ctx.fillStyle = "#FF5722";
       pegs.forEach(peg => {
         ctx.beginPath();
@@ -185,14 +201,14 @@
         ctx.fill();
       });
 
-      // Draw score boost pads at the bottom.
+      // Draw score boost pads at bottom.
       for (let i = 0; i < padCount; i++) {
         const xPos = i * padWidth;
         ctx.fillStyle = "#E0E0E0";
         ctx.fillRect(xPos, padY, padWidth, padHeight);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(xPos, padY, padWidth, padHeight);
-        // Draw multiplier text centered on each pad.
+        // Centered multiplier text.
         ctx.fillStyle = "#000";
         ctx.font = "bold 12px Arial";
         const text = scoreMultipliers[i];
@@ -209,7 +225,7 @@
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
         ctx.fill();
-        // If landed, optionally display the multiplier above the ball.
+        // If landed, display the multiplier above the ball.
         if (ball.landed && ball.multiplier) {
           ctx.fillStyle = "#000";
           ctx.font = "bold 14px Arial";
@@ -230,23 +246,32 @@
 
     // --------------------- User Interaction ---------------------
     document.getElementById('dropBall').addEventListener('click', function() {
+      if (gameOver) return;
+
       const priceInput = document.getElementById('priceInput');
       const dropPrice = parseFloat(priceInput.value);
       if (isNaN(dropPrice) || dropPrice <= 0) {
         alert("Invalid drop price.");
         return;
       }
+      // Check if there's enough money for the drop.
       if (currentMoney < dropPrice) {
-        alert("Not enough money to drop this ball!");
+        alert("Not enough money to drop this ball! Game Over!");
+        triggerGameOver();
         return;
       }
-      // Deduct the drop price immediately.
+      
+      // Deduct the drop price.
       currentMoney -= dropPrice;
       updateMoneyDisplay();
+
+      // If money reaches zero (or below), disable further drops.
+      if (currentMoney <= 0) {
+        triggerGameOver();
+      }
       
-      // Spawn new ball with a random x-offset around the center.
-      // This will generate a random offset between -20 and 20.
-      const randomOffset = Math.random() * 40 - 20;
+      // Spawn new ball from the spawner with random x-offset.
+      const randomOffset = Math.random() * 40 - 20;  // offset between -20 and 20
       const newBall = {
         x: canvas.width / 2 + randomOffset,
         y: 30,
@@ -255,8 +280,8 @@
         r: ballRadius,
         landed: false,
         multiplier: null,
-        cost: dropPrice,    // Save this drop's price for when it lands.
-        collected: false    // Ensure winnings are added only once.
+        cost: dropPrice,   // save drop price for winnings calculation.
+        collected: false
       };
       balls.push(newBall);
     });
