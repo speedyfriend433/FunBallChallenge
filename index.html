@@ -151,7 +151,7 @@
             // Determine pad index based on x-coordinate.
             const padIndex = Math.floor(ball.x / padWidth);
             ball.multiplier = scoreMultipliers[padIndex] || "N/A";
-            // If winnings haven't been added yet, process them.
+            // Add winnings if they haven't been added yet.
             if (!ball.collected && ball.multiplier !== "N/A") {
               const mVal = parseFloat(ball.multiplier.replace('x', ''));
               const winnings = ball.cost * mVal;
@@ -243,9 +243,12 @@
       // Deduct the drop price immediately.
       currentMoney -= dropPrice;
       updateMoneyDisplay();
-      // Create a new ball starting at the triangle's apex.
+      
+      // Spawn new ball with a random x-offset around the center.
+      // This will generate a random offset between -20 and 20.
+      const randomOffset = Math.random() * 40 - 20;
       const newBall = {
-        x: canvas.width / 2,
+        x: canvas.width / 2 + randomOffset,
         y: 30,
         vx: 0,
         vy: 0,
@@ -253,7 +256,7 @@
         landed: false,
         multiplier: null,
         cost: dropPrice,    // Save this drop's price for when it lands.
-        collected: false    // Flag to ensure winnings are added only once.
+        collected: false    // Ensure winnings are added only once.
       };
       balls.push(newBall);
     });
