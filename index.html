@@ -146,20 +146,18 @@
     const scoreMultipliers = leftMultipliers.concat(rightMultipliers);
     
     // ----- Peg Board Settings (Expanded to Fill the Game Screen) -----
-    // We want the peg board to extend from near the top (below the spawner) to just above the score pads.
+    // The peg board will extend from below the spawner near the top to just above the score pads.
     const numPegRows = 15;  
     const yStart = 100;  // Starting y position for the top peg row.
-    const pegVSpacing = (padY - yStart) / (numPegRows - 1);  // Evenly distribute vertically.
+    const pegVSpacing = (padY - yStart) / (numPegRows - 1);  // Even vertical distribution.
     const pegRadius = 4;
     
-    // Generate pegs in a triangular arrangement.
-    // Here, for each row, we use a dynamic horizontal spacing to spread the pegs from a left margin to a right margin.
+    // Generate pegs in a triangular arrangement spanning nearly the entire canvas width.
     let pegs = [];
-    const margin = 20;  // Left/right margin for peg placement.
+    const margin = 20;  // Margin from left and right edges.
     for (let row = 0; row < numPegRows; row++) {
-      const n = row + 1;  // Number of pegs for this row.
+      const n = row + 1;  // Number of pegs in this row.
       let yPos = yStart + row * pegVSpacing;
-      // For a single peg, always center it.
       if(n === 1) {
         pegs.push({ x: canvas.width / 2, y: yPos, r: pegRadius });
       } else {
@@ -172,7 +170,7 @@
     }
     
     // Array for ball objects.
-    // Each ball: x, y, vx, vy, r, cost, landed (flag), collected (flag)
+    // Each ball: x, y, vx, vy, r, cost, landed (flag), and collected (flag for winnings)
     let balls = [];
     
     // Array for floating text effects.
@@ -323,16 +321,18 @@
         alert("Invalid drop price.");
         return;
       }
+      // If drop price is more than current money, notify without triggering game over.
       if (currentMoney < dropPrice) {
-        alert("Not enough money to drop this ball! Game Over!");
-        triggerGameOver();
+        alert("Not enough money to drop this ball!");
         return;
       }
       
       // Deduct the drop price.
       currentMoney -= dropPrice;
       updateMoneyDisplay();
-      if (currentMoney <= 0) {
+      
+      // Trigger game over only if money goes below 0.
+      if (currentMoney < 0) {
         triggerGameOver();
       }
       
