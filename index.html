@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Advanced Plinko with Money Mechanics</title>
+  <title>Advanced Plinko with Effects</title>
   <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
   <style>
     /* Global Styles with a Modern Feel */
@@ -17,17 +17,17 @@
       flex-direction: column;
     }
     
-    h1 {
-      color: #333;
-      margin-bottom: 10px;
-    }
-    
     #gameContainer {
       background: #fff;
       border-radius: 8px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
       padding: 20px;
       width: 520px;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
     }
     
     #controls {
@@ -111,7 +111,7 @@
   </div>
   
   <script>
-    // -------------- Global Variables and Money Mechanics --------------
+    // -------------- Global Money & Game Over Handling --------------
     let currentMoney = 10000;
     let gameOver = false;
     
@@ -145,30 +145,43 @@
     const rightMultipliers = [...leftMultipliers].reverse();
     const scoreMultipliers = leftMultipliers.concat(rightMultipliers);
     
-    // Peg settings arranged in a tight triangular (pyramid) shape.
-    const numPegRows = 9;        // More rows for a fuller triangle.
+    // ----- Peg Board Settings (Expanded to Fill the Game Screen) -----
+    // We want the peg board to extend from near the top (below the spawner) to just above the score pads.
+    const numPegRows = 15;  
+    const yStart = 100;  // Starting y position for the top peg row.
+    const pegVSpacing = (padY - yStart) / (numPegRows - 1);  // Evenly distribute vertically.
     const pegRadius = 4;
-    const pegHSpacing = 30;      // Closer horizontally.
-    const pegVSpacing = 40;      // Closer vertically.
-    const yStart = 120;          // Starting y coordinate for pegs.
     
-    // Generate pegs in a triangle arrangement.
+    // Generate pegs in a triangular arrangement.
+    // Here, for each row, we use a dynamic horizontal spacing to spread the pegs from a left margin to a right margin.
     let pegs = [];
+    const margin = 20;  // Left/right margin for peg placement.
     for (let row = 0; row < numPegRows; row++) {
-      const numPegs = row + 1;
-      const startX = canvas.width / 2 - ((numPegs - 1) * pegHSpacing) / 2;
-      const yPos = yStart + row * pegVSpacing;
-      for (let j = 0; j < numPegs; j++) {
-        pegs.push({ x: startX + j * pegHSpacing, y: yPos, r: pegRadius });
+      const n = row + 1;  // Number of pegs for this row.
+      let yPos = yStart + row * pegVSpacing;
+      // For a single peg, always center it.
+      if(n === 1) {
+        pegs.push({ x: canvas.width / 2, y: yPos, r: pegRadius });
+      } else {
+        const spacingRow = (canvas.width - 2 * margin) / (n - 1);
+        for (let j = 0; j < n; j++) {
+          let xPos = margin + j * spacingRow;
+          pegs.push({ x: xPos, y: yPos, r: pegRadius });
+        }
       }
     }
     
-    // Array to hold all ball objects.
-    // Each ball: x, y, vx, vy, r, cost, landed (flag), collected (for winnings).
+    // Array for ball objects.
+    // Each ball: x, y, vx, vy, r, cost, landed (flag), collected (flag)
     let balls = [];
+    
+    // Array for floating text effects.
+    // Each effect: x, y, text, alpha
+    let floatingTexts = [];
     
     // -------------- Animation & Physics --------------
     function update() {
+      // Update balls.
       for (let ball of balls) {
         if (!ball.landed) {
           // Apply gravity.
@@ -186,7 +199,7 @@
             ball.vx = -ball.vx * restitution;
           }
           
-          // Check for collisions with pegs.
+          // Check collision with pegs.
           for (let peg of pegs) {
             const dx = ball.x - peg.x;
             const dy = ball.y - peg.y;
@@ -204,10 +217,9 @@
             }
           }
           
-          // Check for contact with score pads.
+          // Check if the ball touches the score pads.
           if (ball.y + ball.r >= padY) {
             ball.landed = true;
-            // Determine which pad the ball hit.
             let padIndex = Math.floor(ball.x / padWidth);
             ball.multiplier = scoreMultipliers[padIndex] || "N/A";
             if (!ball.collected && ball.multiplier !== "N/A") {
@@ -216,13 +228,26 @@
               currentMoney += winnings;
               ball.collected = true;
               updateMoneyDisplay();
+              // Create a floating text effect at the ball's location.
+              floatingTexts.push({
+                x: ball.x,
+                y: ball.y,
+                text: "+$" + winnings.toFixed(2),
+                alpha: 1.0
+              });
             }
           }
         }
       }
-      
-      // Remove balls that have landed (making them disappear).
+      // Remove balls that have landed (they disappear).
       balls = balls.filter(ball => !ball.landed);
+      
+      // Update floating text effects.
+      floatingTexts.forEach(effect => {
+        effect.y -= 0.5;       // Float upward.
+        effect.alpha -= 0.02;  // Fade out.
+      });
+      floatingTexts = floatingTexts.filter(effect => effect.alpha > 0);
     }
     
     function drawBoard() {
@@ -237,7 +262,7 @@
       ctx.closePath();
       ctx.fill();
       
-      // Draw pegs.
+      // Draw all pegs.
       ctx.fillStyle = "#FF5722";
       for (let peg of pegs) {
         ctx.beginPath();
@@ -245,7 +270,7 @@
         ctx.fill();
       }
       
-      // Draw score pads at the bottom.
+      // Draw score boost pads at the bottom.
       for (let i = 0; i < padCount; i++) {
         const xPos = i * padWidth;
         ctx.fillStyle = "#E0E0E0";
@@ -271,10 +296,19 @@
       }
     }
     
+    function drawEffects() {
+      for (let effect of floatingTexts) {
+        ctx.fillStyle = "rgba(0,150,0," + effect.alpha + ")";
+        ctx.font = "bold 16px Arial";
+        ctx.fillText(effect.text, effect.x, effect.y);
+      }
+    }
+    
     function animate() {
       update();
       drawBoard();
       drawBalls();
+      drawEffects();
       requestAnimationFrame(animate);
     }
     requestAnimationFrame(animate);
@@ -303,7 +337,7 @@
       }
       
       // Spawn a new ball with a random horizontal offset.
-      const randomOffset = Math.random() * 40 - 20;  // Random offset between -20 and 20.
+      const randomOffset = Math.random() * 40 - 20;  // Offset between -20 and 20.
       const newBall = {
         x: canvas.width / 2 + randomOffset,
         y: 30,
