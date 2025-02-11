@@ -3,133 +3,180 @@
 <head>
   <meta charset="UTF-8">
   <title>Advanced Plinko with Money Mechanics</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
   <style>
+    /* Global Styles with a Modern Feel */
     body {
-      background: #f0f0f0;
-      font-family: Arial, sans-serif;
       margin: 0;
-      padding: 0;
-      text-align: center;
+      font-family: 'Roboto', sans-serif;
+      background: #e0e0e0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      flex-direction: column;
     }
+    
     h1 {
-      margin-top: 20px;
+      color: #333;
+      margin-bottom: 10px;
+    }
+    
+    #gameContainer {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      padding: 20px;
+      width: 520px;
+    }
+    
+    #controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    #controls span {
+      font-size: 18px;
       color: #333;
     }
-    #controls {
-      margin: 10px auto;
-    }
-    #controls span,
+    
     #controls label {
       font-size: 16px;
-      margin: 0 5px;
+      color: #555;
+      margin-right: 5px;
     }
+    
     #priceInput {
-      width: 80px;
-      font-size: 16px;
-      padding: 2px;
-    }
-    canvas {
-      background: #fff;
+      width: 70px;
+      padding: 5px;
       border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    
+    #dropBall {
+      width: 100%;
+      padding: 12px 0;
+      background: #2196F3;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 18px;
+      cursor: pointer;
+      transition: background 0.3s;
+      margin-top: 10px;
+    }
+    
+    #dropBall:hover {
+      background: #1976D2;
+    }
+    
+    #moneyDisplay {
+      font-weight: bold;
+    }
+    
+    canvas {
       display: block;
       margin: 20px auto;
+      background: #fafafa;
+      border: 2px solid #ddd;
+      border-radius: 4px;
     }
-    button {
-      font-size: 16px;
-      padding: 10px 20px;
-      cursor: pointer;
-      margin-bottom: 20px;
-    }
+    
     #gameOverMessage {
       display: none;
-      font-size: 24px;
-      color: red;
-      margin-top: 10px;
+      text-align: center;
+      font-size: 26px;
+      color: #D32F2F;
       font-weight: bold;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <h1>Advanced Plinko (For Fun!)</h1>
-  <div id="controls">
-    <span>Current Money: $<span id="moneyDisplay">10000.00</span></span>
-    &nbsp;&nbsp;&nbsp;
-    <label for="priceInput">Drop Price: $</label>
-    <input type="number" id="priceInput" value="100" min="1">
+  <div id="gameContainer">
+    <h1>Advanced Plinko Game</h1>
+    <div id="controls">
+      <span>Current Money: $<span id="moneyDisplay">10000.00</span></span>
+      <div>
+        <label for="priceInput">Drop Price: $</label>
+        <input type="number" id="priceInput" value="100" min="1">
+      </div>
+    </div>
+    <canvas id="plinkoCanvas" width="500" height="750"></canvas>
+    <button id="dropBall">Drop Ball</button>
+    <div id="gameOverMessage">Game Over!</div>
   </div>
-  <canvas id="plinkoCanvas" width="500" height="750"></canvas>
-  <button id="dropBall">Drop Ball</button>
-  <div id="gameOverMessage">Game Over!</div>
-
+  
   <script>
-    // Get canvas and context
-    const canvas = document.getElementById('plinkoCanvas');
-    const ctx = canvas.getContext('2d');
-
-    // ----------------- Global Money, Game Over & Drop Price -----------------
+    // -------------- Global Variables and Money Mechanics --------------
     let currentMoney = 10000;
     let gameOver = false;
     
     function updateMoneyDisplay() {
       document.getElementById('moneyDisplay').innerText = currentMoney.toFixed(2);
     }
-
+    
     function triggerGameOver() {
       gameOver = true;
       document.getElementById('dropBall').disabled = true;
       document.getElementById('gameOverMessage').style.display = 'block';
     }
-
-    // ------------------ Physics & Game Settings ------------------
-    const gravity = 0.1;         // Lower gravity for a slower ball descent.
-    const restitution = 0.9;     // Retained energy on bounce.
-    const ballRadius = 10;
-
-    // Score pad settings
+    
+    // -------------- Canvas Setup --------------
+    const canvas = document.getElementById('plinkoCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // -------------- Physics & Game Settings --------------
+    const gravity = 0.1;         // Slow downward acceleration.
+    const restitution = 0.9;     // Bounce retention.
+    const ballRadius = 8;        // Smaller ball.
+    
+    // Score pad settings.
     const padHeight = 50;
     const padY = canvas.height - padHeight;
     const padCount = 16;
     const padWidth = canvas.width / padCount;
-
-    // Score multipliers (left half and reversed right half)
+    
+    // Score multipliers.
     const leftMultipliers = ["100x", "25x", "10x", "5x", "2.5x", "1.5x", "0.5x", "0.2x"];
     const rightMultipliers = [...leftMultipliers].reverse();
     const scoreMultipliers = leftMultipliers.concat(rightMultipliers);
-
-    // Peg settings for a triangular (pyramid) arrangement:
-    const numPegRows = 7;
-    const pegRadius = 5;
-    const pegHSpacing = 40;  // horizontal spacing between pegs
-    const pegVSpacing = 50;  // vertical distance between peg rows
-    const yStart = 120;      // starting y for the top peg row
-
-    // Create pegs in a triangular arrangement.
-    const pegs = [];
+    
+    // Peg settings arranged in a tight triangular (pyramid) shape.
+    const numPegRows = 9;        // More rows for a fuller triangle.
+    const pegRadius = 4;
+    const pegHSpacing = 30;      // Closer horizontally.
+    const pegVSpacing = 40;      // Closer vertically.
+    const yStart = 120;          // Starting y coordinate for pegs.
+    
+    // Generate pegs in a triangle arrangement.
+    let pegs = [];
     for (let row = 0; row < numPegRows; row++) {
       const numPegs = row + 1;
-      // Center the row horizontally.
       const startX = canvas.width / 2 - ((numPegs - 1) * pegHSpacing) / 2;
       const yPos = yStart + row * pegVSpacing;
       for (let j = 0; j < numPegs; j++) {
         pegs.push({ x: startX + j * pegHSpacing, y: yPos, r: pegRadius });
       }
     }
-
+    
     // Array to hold all ball objects.
-    // Each ball: x, y, vx, vy, r, landed (flag), multiplier (string), cost (drop price), collected (flag)
-    const balls = [];
-
-    // ---------------------- Animation & Physics ----------------------
+    // Each ball: x, y, vx, vy, r, cost, landed (flag), collected (for winnings).
+    let balls = [];
+    
+    // -------------- Animation & Physics --------------
     function update() {
-      balls.forEach(ball => {
+      for (let ball of balls) {
         if (!ball.landed) {
           // Apply gravity.
           ball.vy += gravity;
-          // Update ball position.
           ball.x += ball.vx;
           ball.y += ball.vy;
-
-          // Bounce off the side walls.
+          
+          // Bounce off side walls.
           if (ball.x < ball.r) {
             ball.x = ball.r;
             ball.vx = -ball.vx * restitution;
@@ -138,36 +185,31 @@
             ball.x = canvas.width - ball.r;
             ball.vx = -ball.vx * restitution;
           }
-
-          // Check collision with each peg.
+          
+          // Check for collisions with pegs.
           for (let peg of pegs) {
             const dx = ball.x - peg.x;
             const dy = ball.y - peg.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < ball.r + peg.r) {
-              // Calculate collision normal.
               const nx = dx / dist;
               const ny = dy / dist;
               const dot = ball.vx * nx + ball.vy * ny;
-              // Reflect velocity using the normal.
               ball.vx = (ball.vx - 2 * dot * nx) * restitution;
               ball.vy = (ball.vy - 2 * dot * ny) * restitution;
-              // Push the ball out of the peg.
               const overlap = ball.r + peg.r - dist;
               ball.x += nx * overlap;
               ball.y += ny * overlap;
-              break;  // Process one collision per frame.
+              break;
             }
           }
-
-          // When the ball reaches the score pad area.
+          
+          // Check for contact with score pads.
           if (ball.y + ball.r >= padY) {
-            ball.y = padY - ball.r;
             ball.landed = true;
-            // Determine pad index based on x-coordinate.
-            const padIndex = Math.floor(ball.x / padWidth);
+            // Determine which pad the ball hit.
+            let padIndex = Math.floor(ball.x / padWidth);
             ball.multiplier = scoreMultipliers[padIndex] || "N/A";
-            // Add winnings if not already added.
             if (!ball.collected && ball.multiplier !== "N/A") {
               const mVal = parseFloat(ball.multiplier.replace('x', ''));
               const winnings = ball.cost * mVal;
@@ -177,14 +219,16 @@
             }
           }
         }
-      });
+      }
+      
+      // Remove balls that have landed (making them disappear).
+      balls = balls.filter(ball => !ball.landed);
     }
-
+    
     function drawBoard() {
-      // Clear the canvas.
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw the triangle spawner obstacle at the top.
+      
+      // Draw the spawner triangle at the top.
       ctx.fillStyle = "#888";
       ctx.beginPath();
       ctx.moveTo(canvas.width / 2, 30);
@@ -192,23 +236,22 @@
       ctx.lineTo(canvas.width / 2 + 40, 80);
       ctx.closePath();
       ctx.fill();
-
+      
       // Draw pegs.
       ctx.fillStyle = "#FF5722";
-      pegs.forEach(peg => {
+      for (let peg of pegs) {
         ctx.beginPath();
         ctx.arc(peg.x, peg.y, peg.r, 0, Math.PI * 2);
         ctx.fill();
-      });
-
-      // Draw score boost pads at bottom.
+      }
+      
+      // Draw score pads at the bottom.
       for (let i = 0; i < padCount; i++) {
         const xPos = i * padWidth;
         ctx.fillStyle = "#E0E0E0";
         ctx.fillRect(xPos, padY, padWidth, padHeight);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(xPos, padY, padWidth, padHeight);
-        // Centered multiplier text.
         ctx.fillStyle = "#000";
         ctx.font = "bold 12px Arial";
         const text = scoreMultipliers[i];
@@ -218,24 +261,16 @@
         ctx.fillText(text, textX, textY);
       }
     }
-
+    
     function drawBalls() {
-      balls.forEach(ball => {
+      for (let ball of balls) {
         ctx.fillStyle = "#2196F3";
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
         ctx.fill();
-        // If landed, display the multiplier above the ball.
-        if (ball.landed && ball.multiplier) {
-          ctx.fillStyle = "#000";
-          ctx.font = "bold 14px Arial";
-          const txtWidth = ctx.measureText(ball.multiplier).width;
-          ctx.fillText(ball.multiplier, ball.x - txtWidth / 2, ball.y - ball.r - 10);
-        }
-      });
+      }
     }
-
-    // Main animation loop.
+    
     function animate() {
       update();
       drawBoard();
@@ -243,18 +278,17 @@
       requestAnimationFrame(animate);
     }
     requestAnimationFrame(animate);
-
-    // --------------------- User Interaction ---------------------
+    
+    // -------------- User Interaction --------------
     document.getElementById('dropBall').addEventListener('click', function() {
       if (gameOver) return;
-
+      
       const priceInput = document.getElementById('priceInput');
       const dropPrice = parseFloat(priceInput.value);
       if (isNaN(dropPrice) || dropPrice <= 0) {
         alert("Invalid drop price.");
         return;
       }
-      // Check if there's enough money for the drop.
       if (currentMoney < dropPrice) {
         alert("Not enough money to drop this ball! Game Over!");
         triggerGameOver();
@@ -264,23 +298,20 @@
       // Deduct the drop price.
       currentMoney -= dropPrice;
       updateMoneyDisplay();
-
-      // If money reaches zero (or below), disable further drops.
       if (currentMoney <= 0) {
         triggerGameOver();
       }
       
-      // Spawn new ball from the spawner with random x-offset.
-      const randomOffset = Math.random() * 40 - 20;  // offset between -20 and 20
+      // Spawn a new ball with a random horizontal offset.
+      const randomOffset = Math.random() * 40 - 20;  // Random offset between -20 and 20.
       const newBall = {
         x: canvas.width / 2 + randomOffset,
         y: 30,
         vx: 0,
         vy: 0,
         r: ballRadius,
+        cost: dropPrice,
         landed: false,
-        multiplier: null,
-        cost: dropPrice,   // save drop price for winnings calculation.
         collected: false
       };
       balls.push(newBall);
