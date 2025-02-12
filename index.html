@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Advanced Plinko with Effects</title>
+  <title>Enhanced Advanced Plinko</title>
   <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
   <style>
     /* Global Styles with a Modern Feel */
@@ -11,43 +11,42 @@
       font-family: 'Roboto', sans-serif;
       background: #e0e0e0;
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
       height: 100vh;
       flex-direction: column;
     }
-    
     #gameContainer {
       background: #fff;
       border-radius: 8px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
       padding: 20px;
-      width: 520px;
+      width: 540px;
     }
-    
     h1 {
       color: #333;
       margin-bottom: 10px;
+      text-align: center;
     }
-    
     #controls {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 10px;
+      flex-wrap: wrap;
     }
-    
+    #controls > div {
+      margin: 5px 0;
+    }
     #controls span {
       font-size: 18px;
       color: #333;
     }
-    
     #controls label {
       font-size: 16px;
       color: #555;
       margin-right: 5px;
     }
-    
     #priceInput {
       width: 70px;
       padding: 5px;
@@ -55,8 +54,14 @@
       border-radius: 4px;
       font-size: 16px;
     }
-    
-    #dropBall {
+    canvas {
+      display: block;
+      margin: 20px auto;
+      background: #fafafa;
+      border: 2px solid #ddd;
+      border-radius: 4px;
+    }
+    button {
       width: 100%;
       padding: 12px 0;
       background: #2196F3;
@@ -68,23 +73,19 @@
       transition: background 0.3s;
       margin-top: 10px;
     }
-    
-    #dropBall:hover {
+    button:hover {
       background: #1976D2;
     }
-    
-    #moneyDisplay {
-      font-weight: bold;
+    #extraButtons {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
     }
-    
-    canvas {
-      display: block;
-      margin: 20px auto;
-      background: #fafafa;
-      border: 2px solid #ddd;
-      border-radius: 4px;
+    #extraButtons button {
+      width: 48%;
+      font-size: 16px;
+      padding: 10px 0;
     }
-    
     #gameOverMessage {
       display: none;
       text-align: center;
@@ -97,9 +98,13 @@
 </head>
 <body>
   <div id="gameContainer">
-    <h1>Advanced Plinko Game</h1>
+    <h1>Enhanced Advanced Plinko</h1>
     <div id="controls">
-      <span>Current Money: $<span id="moneyDisplay">10000.00</span></span>
+      <div>
+        <span>Current Money: $<span id="moneyDisplay">10000.00</span></span>
+        &nbsp;&nbsp;&nbsp;
+        <span>High Score: $<span id="highScoreDisplay">10000.00</span></span>
+      </div>
       <div>
         <label for="priceInput">Drop Price: $</label>
         <input type="number" id="priceInput" value="100" min="1">
@@ -107,58 +112,69 @@
     </div>
     <canvas id="plinkoCanvas" width="500" height="750"></canvas>
     <button id="dropBall">Drop Ball</button>
+    <div id="extraButtons">
+      <button id="toggleAutoDrop">Auto Drop: OFF</button>
+      <button id="restartGame">Restart Game</button>
+    </div>
     <div id="gameOverMessage">Game Over!</div>
   </div>
-  
+
   <script>
-    // -------------- Global Money & Game Over Handling --------------
+    // ---------------- Global Variables & Money Handling ----------------
     let currentMoney = 10000;
+    let highScore = 10000;
     let gameOver = false;
-    
     function updateMoneyDisplay() {
       document.getElementById('moneyDisplay').innerText = currentMoney.toFixed(2);
+      if (currentMoney > highScore) { highScore = currentMoney; }
+      document.getElementById('highScoreDisplay').innerText = highScore.toFixed(2);
     }
-    
     function triggerGameOver() {
       gameOver = true;
       document.getElementById('dropBall').disabled = true;
+      document.getElementById('toggleAutoDrop').disabled = true;
       document.getElementById('gameOverMessage').style.display = 'block';
     }
     
-    // -------------- Canvas Setup --------------
+    // ----------------- Canvas Setup & Audio -----------------
     const canvas = document.getElementById('plinkoCanvas');
     const ctx = canvas.getContext('2d');
+    // Create one AudioContext for playing sounds.
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    function playDing() {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.frequency.value = 440; // A standard tone
+      oscillator.type = 'sine';
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.1);
+    }
     
-    // -------------- Physics & Game Settings --------------
-    const gravity = 0.1;         // Slow downward acceleration.
-    const restitution = 0.9;     // Bounce retention.
-    const ballRadius = 8;        // Smaller ball.
-    
-    // Score pad settings.
+    // ---------------- Physics & Game Settings ----------------
+    const gravity = 0.1;
+    const restitution = 0.9;
+    const ballRadius = 8; // Small ball
     const padHeight = 50;
     const padY = canvas.height - padHeight;
     const padCount = 16;
     const padWidth = canvas.width / padCount;
-    
-    // Score multipliers.
     const leftMultipliers = ["100x", "25x", "10x", "5x", "2.5x", "1.5x", "0.5x", "0.2x"];
     const rightMultipliers = [...leftMultipliers].reverse();
     const scoreMultipliers = leftMultipliers.concat(rightMultipliers);
     
-    // ----- Peg Board Settings (Expanded to Fill the Game Screen) -----
-    // The peg board will extend from below the spawner near the top to just above the score pads.
-    const numPegRows = 15;  
-    const yStart = 100;  // Starting y position for the top peg row.
-    const pegVSpacing = (padY - yStart) / (numPegRows - 1);  // Even vertical distribution.
+    // ---- Expanded Peg Board Settings ----
+    const numPegRows = 15;
+    const yStart = 100;
+    const pegVSpacing = (padY - yStart) / (numPegRows - 1);
     const pegRadius = 4;
-    
-    // Generate pegs in a triangular arrangement spanning nearly the entire canvas width.
     let pegs = [];
-    const margin = 20;  // Margin from left and right edges.
+    const margin = 20;
     for (let row = 0; row < numPegRows; row++) {
-      const n = row + 1;  // Number of pegs in this row.
+      const n = row + 1;
       let yPos = yStart + row * pegVSpacing;
-      if(n === 1) {
+      if (n === 1) {
         pegs.push({ x: canvas.width / 2, y: yPos, r: pegRadius });
       } else {
         const spacingRow = (canvas.width - 2 * margin) / (n - 1);
@@ -169,25 +185,23 @@
       }
     }
     
-    // Array for ball objects.
-    // Each ball: x, y, vx, vy, r, cost, landed (flag), and collected (flag for winnings)
+    // ------------------ Object Arrays: Balls & Effects ------------------
     let balls = [];
-    
-    // Array for floating text effects.
-    // Each effect: x, y, text, alpha
+    // Floating text effects: each object has {x, y, text, alpha}
     let floatingTexts = [];
     
-    // -------------- Animation & Physics --------------
+    // ------------------ Auto Drop Feature Variables ------------------
+    let autoDropActive = false;
+    let autoDropIntervalID = null;
+    
+    // ------------------ Main Animation, Physics, & Drawing ------------------
     function update() {
-      // Update balls.
+      // Update ball physics.
       for (let ball of balls) {
         if (!ball.landed) {
-          // Apply gravity.
           ball.vy += gravity;
           ball.x += ball.vx;
           ball.y += ball.vy;
-          
-          // Bounce off side walls.
           if (ball.x < ball.r) {
             ball.x = ball.r;
             ball.vx = -ball.vx * restitution;
@@ -196,8 +210,6 @@
             ball.x = canvas.width - ball.r;
             ball.vx = -ball.vx * restitution;
           }
-          
-          // Check collision with pegs.
           for (let peg of pegs) {
             const dx = ball.x - peg.x;
             const dy = ball.y - peg.y;
@@ -214,8 +226,6 @@
               break;
             }
           }
-          
-          // Check if the ball touches the score pads.
           if (ball.y + ball.r >= padY) {
             ball.landed = true;
             let padIndex = Math.floor(ball.x / padWidth);
@@ -226,32 +236,31 @@
               currentMoney += winnings;
               ball.collected = true;
               updateMoneyDisplay();
-              // Create a floating text effect at the ball's location.
+              // Show floating text effect.
               floatingTexts.push({
                 x: ball.x,
                 y: ball.y,
                 text: "+$" + winnings.toFixed(2),
                 alpha: 1.0
               });
+              playDing();
             }
           }
         }
       }
-      // Remove balls that have landed (they disappear).
+      // Remove landed balls.
       balls = balls.filter(ball => !ball.landed);
-      
-      // Update floating text effects.
+      // Update floating texts.
       floatingTexts.forEach(effect => {
-        effect.y -= 0.5;       // Float upward.
-        effect.alpha -= 0.02;  // Fade out.
+        effect.y -= 0.5;
+        effect.alpha -= 0.02;
       });
       floatingTexts = floatingTexts.filter(effect => effect.alpha > 0);
     }
     
     function drawBoard() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw the spawner triangle at the top.
+      // Draw the spawner triangle.
       ctx.fillStyle = "#888";
       ctx.beginPath();
       ctx.moveTo(canvas.width / 2, 30);
@@ -259,16 +268,14 @@
       ctx.lineTo(canvas.width / 2 + 40, 80);
       ctx.closePath();
       ctx.fill();
-      
-      // Draw all pegs.
+      // Draw pegs.
       ctx.fillStyle = "#FF5722";
       for (let peg of pegs) {
         ctx.beginPath();
         ctx.arc(peg.x, peg.y, peg.r, 0, Math.PI * 2);
         ctx.fill();
       }
-      
-      // Draw score boost pads at the bottom.
+      // Draw score pads.
       for (let i = 0; i < padCount; i++) {
         const xPos = i * padWidth;
         ctx.fillStyle = "#E0E0E0";
@@ -311,33 +318,26 @@
     }
     requestAnimationFrame(animate);
     
-    // -------------- User Interaction --------------
-    document.getElementById('dropBall').addEventListener('click', function() {
+    // ------------------ Ball Drop Functionality ------------------
+    function dropBallFunc() {
       if (gameOver) return;
-      
       const priceInput = document.getElementById('priceInput');
       const dropPrice = parseFloat(priceInput.value);
       if (isNaN(dropPrice) || dropPrice <= 0) {
         alert("Invalid drop price.");
         return;
       }
-      // If drop price is more than current money, notify without triggering game over.
       if (currentMoney < dropPrice) {
         alert("Not enough money to drop this ball!");
         return;
       }
-      
-      // Deduct the drop price.
       currentMoney -= dropPrice;
       updateMoneyDisplay();
-      
-      // Trigger game over only if money goes below 0.
       if (currentMoney < 0) {
-        triggerGameOver();
+        triggerGameOver(); 
+        return;
       }
-      
-      // Spawn a new ball with a random horizontal offset.
-      const randomOffset = Math.random() * 40 - 20;  // Offset between -20 and 20.
+      const randomOffset = Math.random() * 40 - 20;
       const newBall = {
         x: canvas.width / 2 + randomOffset,
         y: 30,
@@ -349,8 +349,45 @@
         collected: false
       };
       balls.push(newBall);
+    }
+    
+    // ------------------ Button Event Listeners ------------------
+    document.getElementById('dropBall').addEventListener('click', dropBallFunc);
+    
+    document.getElementById('toggleAutoDrop').addEventListener('click', function() {
+      if (autoDropActive) {
+        clearInterval(autoDropIntervalID);
+        autoDropActive = false;
+        this.innerText = "Auto Drop: OFF";
+      } else {
+        autoDropActive = true;
+        this.innerText = "Auto Drop: ON";
+        autoDropIntervalID = setInterval(() => {
+          if (!gameOver) { dropBallFunc(); }
+          else { clearInterval(autoDropIntervalID); }
+        }, 1500);
+      }
+    });
+    
+    document.getElementById('restartGame').addEventListener('click', function() {
+      // Reset game state.
+      currentMoney = 10000;
+      highScore = 10000;
+      gameOver = false;
+      updateMoneyDisplay();
+      document.getElementById('gameOverMessage').style.display = 'none';
+      document.getElementById('dropBall').disabled = false;
+      document.getElementById('toggleAutoDrop').disabled = false;
+      balls = [];
+      floatingTexts = [];
+      if (autoDropActive) {
+        clearInterval(autoDropIntervalID);
+        autoDropActive = false;
+        document.getElementById('toggleAutoDrop').innerText = "Auto Drop: OFF";
+      }
     });
   </script>
 </body>
 </html>
+
 
